@@ -1,9 +1,40 @@
 <html>
-<head></head>
+<head>
+<style>
+    input {
+        width: 300;
+    }
+</style>
+
+</head>
+
 <body>
 
     <div class="controls">
         <button id="toggleTraining" type="button" onclick="toggleTraining()">Train</button>
+        <p>Learning rate</p>
+        <input type="range" width="300" min="1" max="100" value="50" class="slider" id="alpha">
+
+        <p>Sigma</p>
+        <input type="range" width="300" min="1" max="100" value="50" class="slider" id="sigma">
+        <p>Sigma auto</p>
+         <input type="checkbox" id="sigma_auto" >
+
+        <p>N samples</p>
+        <input type="range" width="300" min="10" max="1000" value="50" class="slider" id="n_samples">
+
+        <p>N evals</p>
+        <input type="range" width="300" min="1" max="100" value="50" class="slider" id="n_evals">
+
+
+    </div>
+
+    <div class="status">
+        <p>Learning rate: <span id="lr_info"></span></p>
+        <p>Sigma: <span id="sigma_info"></span></p>
+        <p>N samples: <span id="n_samples_info"></span></p>
+        <p>N evals: <span id="n_evals_info"></span></p>
+        <p>Average fitness: <span id="avg_fit"></span></p>
     </div>
     <script src="math.js"></script>
     <script src="main.js"></script>

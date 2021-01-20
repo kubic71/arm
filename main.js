@@ -33,7 +33,7 @@ function rand_normal() {
 
 function randn(rows, cols) {
     let z = math.zeros([rows, cols]);
-    z = math.map(z, function() {
+    z = math.map(z, function () {
         return rand_normal();
     });
     return z;
@@ -41,43 +41,62 @@ function randn(rows, cols) {
 
 function randn_sigma(rows, cols, sigma) {
     let z = math.zeros([rows, cols]);
-    z = math.map(z, function() {
+    z = math.map(z, function () {
+        return rand_normal() * sigma;
+    });
+    return z;
+}
+
+function randn_sigma_bias(rows, sigma) {
+    let z = math.zeros(rows);
+    z = math.map(z, function () {
         return rand_normal() * sigma;
     });
     return z;
 }
 
 function init_weights() {
-    W = randn_sigma(DIM, DIM, .1);
+    W1 = randn_sigma(DIM, DIM, .1);
+    b1 = randn_sigma_bias(DIM, .1);
+    W2 = randn_sigma(DIM, DIM, .1);
+    b2 = randn_sigma_bias(DIM, .1);
+
+
+    lengths = math.zeros(segments);
+    for(let i = 0; i < segments ; i++) { 
+        lengths._data[i] = math.random(400);
+    }
+
+    net = { W1: W1, b1: b1, W2: W2, b2: b2, lengths:lengths};
 }
 
 function features(target) {
-    let s = {x: width/2, y: height/2};
-    let vect = {x: s.x - target.x, y: s.y - target.y};
+    let s = { x: width / 2, y: height / 2 };
+    let vect = { x: s.x - target.x, y: s.y - target.y };
     //let angle = Math.atan2(vect.y, vect.x);
-    return [1, vect.x/500, vect.y/500];
-}   
+    return [1, vect.x / 500, vect.y / 500];
+}
 
-function feed_forward(f, W, l) {
+var net;
+
+function feed_forward(f, net, l, draw = true) {
     let z = math.zeros(DIM);
 
-    for (let i = 0; i < DIM; i ++) {
+    for (let i = 0; i < DIM; i++) {
         if (i < f.length) {
             z._data[i] = f[i];
         } else {
-            z._data[i] = 1;
+            z._data[i] = 0;
         }
     }
 
-    z = math.multiply(z, W);
+    z = math.multiply(z, net.W1);
+    z = math.add(z, net.b1)
     z = math.map(z, Math.tanh);
-    z._data[0] = 1;
 
-    z = math.multiply(z, W);
+    z = math.multiply(z, net.W2);
+    z = math.add(z, net.b2)
     z = math.map(z, Math.tanh);
-    z._data[0] = 1;
-
-    z = math.multiply(z, W);
 
     /*
     let s = {x: width/2 + z._data[0]*100, y: height/2 + z._data[1]*100};
@@ -86,42 +105,77 @@ function feed_forward(f, W, l) {
     // draw arm
 
     let r = math.zeros(l);
-    for (let i = 0; i < l; i ++) {
+    for (let i = 0; i < l; i++) {
         r._data[i] = z._data[i] * 2 * Math.PI;
     }
 
     let angles = r._data;
+    let s = { x: width / 2, y: height / 2 };
 
-    let s = {x: width/2, y: height/2};
+    if (draw) {
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        for (let i = 0; i < angles.length; i++) {
+            s = { x: s.x + Math.cos(angles[i]) * (net.lengths._data[i] + 400 * z._data[segments + i]), y: s.y + Math.sin(angles[i]) * (net.lengths._data[i] + 400 * z._data[segments + i])};
+            ctx.lineTo(s.x, s.y);
+        }
 
-    ctx.beginPath();
+        ctx.stroke();
+        ctx.fillRect(s.x - 20, s.y - 20, 40, 40);
 
-    ctx.moveTo(s.x, s.y);
-    for (let i = 0; i < angles.length; i++) {
-        s = {x: s.x + Math.cos(angles[i])*length, y: s.y + Math.sin(angles[i])*length};
-        ctx.lineTo(s.x, s.y);
+    } else {
+        for (let i = 0; i < angles.length; i++) {
+            s = { x: s.x + Math.cos(angles[i]) * (net.lengths._data[i] + 400 *z._data[segments + i]), y: s.y + Math.sin(angles[i]) * (net.lengths._data[i] + 400 * z._data[segments + i])};
+        }
     }
-
-    ctx.stroke();
-    
-
-
-    ctx.fillRect(s.x-20, s.y-20, 40, 40);
     return s;
 }
 
 function distance_2(a, b) {
     let xd = a.x - b.x;
     let yd = a.y - b.y;
-    return xd*xd + yd*yd;
+    // return Math.sqrt(xd * xd + yd * yd);
+    return xd * xd + yd * yd;
 }
 
-window.onmousemove = function(evt) {
+function fitness(net, segments, n_evals=0) {
+    let fit = 0
+
+    n_evals = n_evals === 0 ? N_EVALS : n_evals;
+    for (let i = 0; i < n_evals; i++) {
+        // generate random target point
+        target = getRandPoint();
+
+        let f = features(target);
+
+        let p;
+        if (i === n_evals - 1) {
+            // draw last eval 
+            ctx.fillStyle = "#000000";
+            // draw target point
+            ctx.globalAlpha = 0.1;
+            ctx.fillRect(target.x - 10, target.y - 10, 20, 20);
+            ctx.globalAlpha = 0.02;
+            // arm from weights
+            ctx.fillStyle = "#0000ff";
+            p = feed_forward(f, net, segments, true);
+        } else {
+            p = feed_forward(f, net, segments, false);
+        }
+
+        fit += -distance_2(p, target);
+    }
+
+    return fit / n_evals;
+}
+
+
+window.onmousemove = function (evt) {
     mouse.x = evt.offsetX * 2;
     mouse.y = evt.offsetY * 2;
 };
 
-window.onkeydown = function(evt) {
+window.onkeydown = function (evt) {
     let key = evt.key;
     if (key == "r") {
         // randomize weidhts
@@ -138,85 +192,174 @@ function toggleTraining() {
     document.getElementById(selector).innerHTML = training ? 'Stop' : 'Train';
 }
 
-var mouse = {x: 0, y: 0};
+var mouse = { x: 0, y: 0 };
 
-let DIM = features(mouse).length + 4;
-var W;
+var segments = 6;
+let DIM = 2*segments + 2; 
+var net;
+
 init_weights();
 
-let avg_r = 0;
-let learning_rate = .2;
-let sigma = .02;
+let fit = 0;
 
-var samples = 1000;
-var rs = new Array(samples);
 
 // arm
-var segments = 5;
-var length = 200;
 
 var training = false;
 
+let learning_rate;
+let exploration_sigma = 0.1; 
+let sigma_auto;
+let n_samples;
+let N_EVALS;
+let better;
+
+
+function addNoise(net, noise) {
+    return { W1: math.add(net.W1, noise.W1), b1: math.add(net.b1, noise.b1), W2: math.add(net.W2, noise.W2), b2: math.add(net.b2, noise.b2), lengths: math.add(net.lengths, noise.lengths)};
+}
+
+function netMultiply(net, m) {
+    return { W1: math.multiply(net.W1, m), b1: math.multiply(net.b1, m), W2: math.multiply(net.W2, m), b2: math.multiply(net.b2, m), lengths:math.multiply(net.lengths, m)};
+}
+
+
+function zeroNet() {
+    W1 = math.zeros(DIM, DIM)
+    b1 = math.zeros(DIM);
+    W2 = math.zeros(DIM, DIM)
+    b2 = math.zeros(DIM);
+    lengths = math.zeros(segments);
+    return { W1: W1, b1: b1, W2: W2, b2: b2 , lengths:lengths};
+}
+
+
+function getRandPoint() {
+    while (true) {
+        let x = Math.random() * 2000- 1000;
+        let y = Math.random() * 2000- 1000;
+
+        if (x * x + y * y < 1000 * 1000) {
+            return { x: width / 2 + x, y: height / 2 + y };
+        }
+    }
+}
+
+
+function update_info() {
+
+    document.getElementById("lr_info").innerHTML = learning_rate;
+    document.getElementById("sigma_info").innerHTML = exploration_sigma;
+    document.getElementById("n_samples_info").innerHTML = n_samples;
+    document.getElementById("n_evals_info").innerHTML = N_EVALS;
+    document.getElementById("avg_fit").innerHTML = avg_fit;
+}
+
+
+let avg_fit = 0;
 
 function render() {
     window.requestAnimationFrame(render);
     ctx.clearRect(0, 0, width, height);
     ctx.lineWidth = 10;
+    ctx.fillStyle = "#000000";
+
+
+    ctx.beginPath();
+    ctx.arc(width / 2, height / 2, 800, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    learning_rate = Math.pow(10, document.getElementById("alpha").value / 30) * 0.0001;
+
+    sigma_auto = document.getElementById("sigma_auto").checked;
+    if (!sigma_auto) {
+        exploration_sigma = Math.pow(10, document.getElementById("sigma").value / 30) * 0.0001;
+    }
+
+    n_samples = document.getElementById("n_samples").value
+    N_EVALS = document.getElementById("n_evals").value
+
+
+    update_info();
+
+    var rs = new Array(n_samples);
+
+    var slider = document.getElementById("myRange");
 
     if (training) {
         ctx.save();
         ctx.globalAlpha = .02;
-        
+
         let candidates = [];
-        for (let i = 0; i < samples; i ++) {
-            let targ_angle = Math.random() * Math.PI * 2;
-            let d = Math.random() * 800;
-            let target = {x: width/2 + Math.cos(targ_angle) * d, y: height/2 + Math.sin(targ_angle) * d};
+        better = 0;
+        fit = fitness(net, segments, 600);
+        avg_fit = avg_fit + 0.05 * (fit - avg_fit);
+        for (let i = 0; i < n_samples; i++) {
 
-            ctx.fillStyle = "#000000";
-            ctx.fillRect(target.x-10, target.y-10, 20, 20);
-
-            let f = features(target);
-
-            // arm from weights
-            ctx.fillStyle = "#0000ff";
-            let p1 = feed_forward(f, W, segments);
 
             // arm from modified weights
-            let W_noise = randn_sigma(DIM, DIM, sigma);
-            let W_mod = math.add(W, W_noise);
+            let noise = {
+                W1: randn_sigma(DIM, DIM, exploration_sigma), b1: randn_sigma_bias(DIM, exploration_sigma),
+                W2: randn_sigma(DIM, DIM, exploration_sigma), b2: randn_sigma_bias(DIM, exploration_sigma),
+                lengths: randn_sigma_bias(segments, exploration_sigma * 200),
+            };
+
+            let net_mod = addNoise(net, noise);
             ctx.fillStyle = "#ff0000";
-            let p2 = feed_forward(f, W_mod, segments);
+            rs[i] = fitness(net_mod, segments)
 
-            let r1 = -distance_2(p1, target);
-            let r2 = -distance_2(p2, target);
+            if (rs[i] > fit) {
+                better += 1;
+            }
 
-            let r = r2 - r1;
-            rs[i] = r;
-
-            candidates.push(W_noise);
+            candidates.push(noise);
         }
 
-        let mean = math.sum(rs)/samples;
+
+        let fit_mean = math.sum(rs) / n_samples;
         let std = math.std(rs);
 
-        avg_r += (mean - avg_r) * .01;
 
-        let weighted_avg = math.zeros([DIM, DIM]);
+        let weighted_avg = zeroNet();
 
-        for (let i = 0; i < samples; i ++) {
-            let u = math.multiply(  (rs[i]-mean)/std, candidates[i] );
-            weighted_avg = math.add(weighted_avg, u)
+        for (let i = 0; i < n_samples; i++) {
+            // normalized relative advantage of W_noise
+            let advantage = (rs[i] - fit_mean) / std;
+
+            // take weighted average of noise samples weighted by its advantages
+            let u = netMultiply(candidates[i], advantage);
+            weighted_avg = addNoise(weighted_avg, u)
         }
 
-        W = math.add(W, math.multiply(learning_rate/(samples*sigma), weighted_avg));
+        var old_net = net;
+        net = addNoise(net, netMultiply(weighted_avg, learning_rate / (n_samples * exploration_sigma)));
+
+        let new_fit = fitness(old_net, segments, 600);
+        if(new_fit < fit) {
+            net = old_net;
+        }
+
+        // update sigma
+        if (sigma_auto) {
+            if (n_samples / 3 < better) {
+                // if we have more than 20% better individuals
+                exploration_sigma = exploration_sigma / 0.999;
+
+            } else {
+                exploration_sigma = exploration_sigma * 0.999;
+            }
+
+
+            exploration_sigma = Math.min(0.3, exploration_sigma);
+        }
+
         ctx.restore();
     } else {
         ctx.globalAlpha = 1;
 
         let f = features(mouse);
         ctx.fillStyle = "#0000ff";
-        let p = feed_forward(f, W, segments);
+        let p = feed_forward(f, net, segments);
     }
 }
 
